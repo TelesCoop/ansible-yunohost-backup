@@ -1,0 +1,45 @@
+---
+
+- hosts: all
+  remote_user: root
+  tasks:
+    - name: install restic
+      apt:
+        name: restic
+        state: present
+    - name: copy restic password to file
+      copy:
+        content: "{{ vault_restic_password }}"
+        dest: /root/.restic-password
+        mode: 0600
+    - name: regular yunohost backup with cron
+      cron:
+        name: "Create yunohost backup and remove older ones"
+        minute: "0"
+        hour: "3"
+        user: root
+        state: present
+        job: "yunohost backup create && yunohost backup list | tail -n +2 | head -n -3 | cut -c 4- | xargs -L1 --no-run-if-empty yunohost backup delete"
+    - name: regular uploading the backup to s3 with restic
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ vault_aws_access_key_id }}"
+        AWS_SECRET_ACCESS_KEY: "{{ vault_aws_secret_access_key }}"
+      cron:
+        name: "Upload yunohost backup to s3"
+        minute: "0"
+        hour: "4"
+        user: root
+        state: present
+        job: "env AWS_ACCESS_KEY_ID=\"{{ vault_aws_access_key_id }}\" AWS_SECRET_ACCESS_KEY=\"{{ vault_aws_secret_access_key }}\" restic backup /home/yunohost.backup/archives/ --repo s3:https://s3.fr-par.scw.cloud/telescoop-restic-yunohost --password-file /root/.restic-password"
+        job: "yunohost backup create"
+    - name: restic - only keep last snapshot
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ vault_aws_access_key_id }}"
+        AWS_SECRET_ACCESS_KEY: "{{ vault_aws_secret_access_key }}"
+      cron:
+        name: "Upload yunohost backup to s3"
+        minute: "0"
+        hour: "5"
+        user: root
+        state: present
+        job: "env AWS_ACCESS_KEY_ID=\"{{ vault_aws_access_key_id }}\" AWS_SECRET_ACCESS_KEY=\"{{ vault_aws_secret_access_key }}\" restic forget --keep-last 1 --prune /home/yunohost.backup/archives/ --repo s3:https://s3.fr-par.scw.cloud/telescoop-restic-yunohost --password-file /root/.restic-password"
