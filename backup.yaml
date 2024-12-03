@@ -30,7 +30,7 @@
         minute: 0
         hour: 3
         user: root
-        state: present
+        state: absent
         job: yunohost backup create
     - name: remove older backups
       cron:
@@ -38,7 +38,7 @@
         minute: 50
         hour: 3
         user: root
-        state: present
+        state: absent
         job: yunohost backup list | tail -n +2 | head -n -3 | cut -c 4- | xargs -L1 --no-run-if-empty yunohost backup delete
     - name: regular uploading the backup to s3 with restic
       cron:
@@ -46,7 +46,7 @@
         minute: "0"
         hour: "4"
         user: root
-        state: present
+        state: absent
         job: "restic backup /home/yunohost.backup/archives/ --repo s3:https://s3.fr-par.scw.cloud/telescoop-restic-yunohost --password-file /root/.restic-password"
     - name: restic - only keep last backup
       cron:
@@ -54,12 +54,19 @@
         minute: "0"
         hour: "5"
         user: root
-        state: present
+        state: absent
         job: "restic forget --keep-last 3 --prune /home/yunohost.backup/archives/ --repo s3:https://s3.fr-par.scw.cloud/telescoop-restic-yunohost --password-file /root/.restic-password"
+    - name: remove old n8n execution data
+      cron:
+        name: "remove old n8n execution entities"
+        minute: "*/5"
+        user: root
+        state: present
+        job: su postgres -c "psql -d n8n -c 'delete from execution_entity where \"id\" not in (SELECT \"id\" FROM execution_entity order by \"id\" desc limit 3000);'"
     - name: remove old n8n execution data
       cron:
         name: "remove old n8n execution data"
         minute: "*/5"
         user: root
         state: present
-        job: su postgres -c "psql -d n8n -c 'delete from execution_data where \"executionId\" not in (SELECT \"executionId\" FROM execution_data order by \"executionId\" desc limit 1500);'"
+        job: su postgres -c "psql -d n8n -c 'delete from execution_data where \"executionId\" not in (SELECT \"id\" FROM execution_entity);'"
